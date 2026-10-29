@@ -5,3 +5,4 @@ index.html
 vite.config.js
 *.log
 .gitignore
+.pdf/

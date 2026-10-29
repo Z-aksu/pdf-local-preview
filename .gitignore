@@ -2,6 +2,7 @@
 node_modules
 ten-year-past-papers/node_modules
 dist/
+.pdf/
 
 # local env files
 .env.local

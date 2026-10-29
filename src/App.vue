@@ -5,6 +5,8 @@ import PdfViewer from './components/PdfViewer.vue'
 import DocumentTabPicker from './components/DocumentTabPicker.vue'
 import OutlineNode from './components/OutlineNode.vue'
 import TreeNode from './components/TreeNode.vue'
+import LockScreen from './components/LockScreen.vue'
+import { createBlurLock } from './blur-lock.js'
 import {
   closeDocumentTab,
   closeDocumentTabs,
@@ -76,6 +78,15 @@ const readingMode = ref(false)
 const focusTabSwitchEnabled = ref(false)
 const focusMode = ref(false)
 const settingsOpen = ref(false)
+const configReady = ref(false)
+const configLoading = ref(true)
+const configError = ref('')
+const screenLocked = ref(false)
+const passwordRequired = ref(true)
+const unlockPending = ref(false)
+const unlockError = ref('')
+const screenBlocked = computed(() => !configReady.value || screenLocked.value)
+let blurLock = null
 
 let treeRequestGeneration = 0
 let resizePointerMoveHandler = null
@@ -89,6 +100,52 @@ const SIDEBAR_WIDTH_STORAGE_KEY = 'pdf-local-preview.sidebar-width'
 const READING_MODE_STORAGE_KEY = 'pdf-local-preview.reading-mode'
 const FOCUS_TAB_SWITCH_STORAGE_KEY = 'pdf-local-preview.focus-tab-switch'
 const FOCUS_MODE_STORAGE_KEY = 'pdf-local-preview.focus-mode'
+
+async function loadLockConfig() {
+  configLoading.value = true
+  configError.value = ''
+  try {
+    const response = await fetch('/api/config', { cache: 'no-store' })
+    const config = await response.json()
+    if (!response.ok) throw new Error('无法读取本地配置，请确认服务已启动后重试')
+    if (typeof config.blurLockScreen !== 'boolean' || typeof config.hasLockPassword !== 'boolean' || !config.workspaceId) {
+      throw new Error('本地配置无效，请重启服务后重试')
+    }
+    if (!blurLock) return
+    passwordRequired.value = config.hasLockPassword
+    blurLock.configure({ enabled: config.blurLockScreen, workspaceId: config.workspaceId })
+    configReady.value = true
+    if (!treeInitialized.value) await loadTree()
+  } catch (error) {
+    configError.value = error.message || '无法连接本地服务，请确认服务已启动后重试'
+  } finally {
+    configLoading.value = false
+  }
+}
+
+async function unlockScreen(password) {
+  if (unlockPending.value || !blurLock) return
+  unlockPending.value = true
+  unlockError.value = ''
+  try {
+    const unlocked = await blurLock.unlock(async () => {
+      const response = await fetch('/api/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+        cache: 'no-store',
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(response.status === 401 ? '暂时无法继续，请重试' : '无法连接本地服务，请稍后重试')
+      return result.unlocked === true
+    })
+    if (!unlocked) unlockError.value = '操作已中断，请重试'
+  } catch (error) {
+    unlockError.value = error.message || '无法连接本地服务，请稍后重试'
+  } finally {
+    unlockPending.value = false
+  }
+}
 
 function getWorkspaceStorageKey(baseKey) {
   return createWorkspaceStorageKey(baseKey, workspaceId.value)
@@ -571,6 +628,7 @@ function persistFocusMode() {
 }
 
 function handleGlobalKeydown(event) {
+  if (screenBlocked.value) return
   if (event.key === 'Escape' && tabContextMenu.value) {
     event.preventDefault()
     closeTabContextMenu(true)
@@ -731,8 +789,17 @@ function persistTreeExpansionState() {
   )
 }
 
-watch([activeFile, focusMode], ([file, focused]) => {
-  document.title = resolveDocumentTitle(file?.name, focused)
+watch([activeFile, focusMode, screenBlocked], ([file, focused, blocked]) => {
+  if (typeof document === 'undefined') return
+  document.title = blocked ? '—' : resolveDocumentTitle(file?.name, focused)
+}, { immediate: true })
+watch(screenBlocked, (blocked) => {
+  if (!blocked) return
+  closeTabContextMenu()
+  settingsOpen.value = false
+  sidebarOpen.value = false
+  stopSidebarResize()
+  unlockError.value = ''
 })
 watch(readingMode, persistReadingMode)
 watch(focusTabSwitchEnabled, persistFocusTabSwitchPreference)
@@ -742,16 +809,23 @@ watch(collapsedDirectoryPaths, persistTreeExpansionState)
 watch([openTabs, activeTabPath, tabScrollPositions, tabScrollAnchors], schedulePersistTabs, { deep: true })
 
 onMounted(() => {
+  blurLock = createBlurLock({
+    windowObject: window,
+    documentObject: document,
+    onChange: (locked) => { screenLocked.value = locked },
+  })
   viewportWidth.value = window.innerWidth
   window.addEventListener('resize', handleViewportResize)
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('pointerdown', handleGlobalPointerDown)
   window.addEventListener('blur', closeTabContextMenu)
   window.addEventListener('beforeunload', persistTabs)
-  loadTree()
+  loadLockConfig()
 })
 
 onBeforeUnmount(() => {
+  blurLock?.dispose()
+  blurLock = null
   if (persistTimer !== null) window.clearTimeout(persistTimer)
   persistTimer = null
   stopSidebarResize()
@@ -766,7 +840,10 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="app-shell"
+    :inert="screenBlocked"
+    :aria-hidden="screenBlocked ? 'true' : undefined"
     :class="{
+      'app-shell--locked': screenBlocked,
       'app-shell--reading-mode': readingMode,
       'app-shell--focus-mode': focusMode,
     }"
@@ -1192,4 +1269,15 @@ onBeforeUnmount(() => {
       </main>
     </div>
   </div>
+  <LockScreen
+    v-if="screenBlocked"
+    :ready="configReady"
+    :loading="configLoading"
+    :config-error="configError"
+    :error="unlockError"
+    :busy="unlockPending"
+    :password-required="passwordRequired"
+    @unlock="unlockScreen"
+    @retry="loadLockConfig"
+  />
 </template>

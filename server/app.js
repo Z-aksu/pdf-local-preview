@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import path from 'node:path'
 
 import { buildPdfTree, countPdfFiles, resolvePdfPath } from './files.js'
+import { hasLockPassword, initializeWorkspaceConfig } from './config.js'
 
 function asyncRoute(handler) {
   return (request, response, next) => {
@@ -21,7 +22,7 @@ function createWorkspaceId(rootDir) {
     .slice(0, 24)
 }
 
-export function createPdfApp({ rootDir, staticDir }) {
+export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceConfig(rootDir) }) {
   const app = express()
   const absoluteRoot = path.resolve(rootDir)
   const workspaceId = createWorkspaceId(absoluteRoot)
@@ -46,6 +47,31 @@ export function createPdfApp({ rootDir, staticDir }) {
       "form-action 'none'",
     ].join('; '))
     next()
+  })
+
+  app.get('/api/config', (_request, response) => {
+    response.setHeader('Cache-Control', 'no-store')
+    response.json({ workspaceId, blurLockScreen: config.blurLockScreen, hasLockPassword: hasLockPassword(config) })
+  })
+
+  app.post('/api/unlock', express.json({ limit: '1kb' }), (request, response) => {
+    response.setHeader('Cache-Control', 'no-store')
+    if (!hasLockPassword(config)) {
+      response.json({ unlocked: true })
+      return
+    }
+    const password = request.body?.password
+    if (typeof password !== 'string') {
+      response.status(400).json({ error: '请输入锁屏密码' })
+      return
+    }
+    const expected = crypto.createHash('sha256').update(String(config.lockPassword)).digest()
+    const received = crypto.createHash('sha256').update(password).digest()
+    if (!crypto.timingSafeEqual(expected, received)) {
+      response.status(401).json({ error: '密码错误，请重试' })
+      return
+    }
+    response.json({ unlocked: true })
   })
 
   app.get('/api/tree', asyncRoute(async (_request, response) => {

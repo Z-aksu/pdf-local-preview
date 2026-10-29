@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
 import { createPdfApp } from '../server/app.js'
 
-async function startFixtureServer(t) {
+async function startFixtureServer(t, config) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'pdf-view-api-'))
   const nested = path.join(root, '资料')
   await mkdir(nested)
   await writeFile(path.join(nested, 'sample.pdf'), '%PDF-1.4 fixture')
   await writeFile(path.join(root, 'notes.txt'), 'not public')
+  if (config) {
+    await mkdir(path.join(root, '.pdf'))
+    await writeFile(path.join(root, '.pdf', 'config.json'), JSON.stringify(config))
+  }
 
   const app = createPdfApp({ rootDir: root, staticDir: null })
   const server = await new Promise((resolve) => {
@@ -98,4 +102,72 @@ test('unknown API routes return JSON instead of the application shell', async (t
 
   assert.equal(response.status, 404)
   assert.deepEqual(await response.json(), { error: '接口不存在' })
+})
+
+test('configuration is initialized before requests and only public settings reach the browser', async (t) => {
+  const { root, baseUrl } = await startFixtureServer(t)
+  const config = JSON.parse(await readFile(path.join(root, '.pdf', 'config.json'), 'utf8'))
+  const response = await fetch(`${baseUrl}/api/config`)
+  const result = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  assert.equal(result.blurLockScreen, true)
+  assert.equal(result.hasLockPassword, false)
+  assert.match(result.workspaceId, /^[a-f0-9]{24}$/)
+  assert.deepEqual(Object.keys(result).sort(), ['blurLockScreen', 'hasLockPassword', 'workspaceId'])
+  assert.equal(config.lockPassword, '')
+  const tree = await fetch(`${baseUrl}/api/tree`).then((response) => response.json())
+  assert.equal(tree.workspaceId, result.workspaceId)
+  assert.ok(tree.tree.every((entry) => entry.name !== '.pdf'))
+  assert.equal((await fetch(`${baseUrl}/.pdf/config.json`)).status, 404)
+  assert.equal((await fetch(`${baseUrl}/api/pdf?path=.pdf/config.json`)).status, 400)
+})
+
+test('unlock validates custom passwords on the server and does not disclose them', async (t) => {
+  const { baseUrl } = await startFixtureServer(t, { blurLockScreen: true, lockPassword: '0042' })
+  const config = await fetch(`${baseUrl}/api/config`).then((response) => response.json())
+  assert.equal(config.hasLockPassword, true)
+  assert.equal(Object.hasOwn(config, 'lockPassword'), false)
+  const unlock = (body) => fetch(`${baseUrl}/api/unlock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const wrong = await unlock({ password: '9999' })
+  assert.equal(wrong.status, 401)
+  assert.equal(wrong.headers.get('cache-control'), 'no-store')
+  assert.deepEqual(await wrong.json(), { error: '密码错误，请重试' })
+  const invalid = await unlock({ password: 42 })
+  assert.equal(invalid.status, 400)
+  const correct = await unlock({ password: '0042' })
+  assert.equal(correct.status, 200)
+  assert.deepEqual(await correct.json(), { unlocked: true })
+  assert.equal((await fetch(`${baseUrl}/api/unlock?password=0042`)).status, 404)
+})
+
+test('respects disabled locking and numeric custom passwords', async (t) => {
+  const { baseUrl } = await startFixtureServer(t, { blurLockScreen: false, lockPassword: 1234 })
+  const config = await fetch(`${baseUrl}/api/config`).then((response) => response.json())
+  assert.equal(config.blurLockScreen, false)
+  assert.equal(config.hasLockPassword, true)
+  const response = await fetch(`${baseUrl}/api/unlock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: '1234' }),
+  })
+  assert.equal(response.status, 200)
+})
+
+test('empty passwords allow resuming without a password while blur protection remains enabled', async (t) => {
+  const { baseUrl } = await startFixtureServer(t)
+  const config = await fetch(`${baseUrl}/api/config`).then((response) => response.json())
+  assert.equal(config.blurLockScreen, true)
+  assert.equal(config.hasLockPassword, false)
+  const response = await fetch(`${baseUrl}/api/unlock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: '' }),
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { unlocked: true })
 })

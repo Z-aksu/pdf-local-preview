@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import open from 'open'
 
 import { createPdfApp } from '../server/app.js'
+import { hasLockPassword, initializeWorkspaceConfig } from '../server/config.js'
 import { listenOnAvailablePort } from '../server/listen.js'
 import { parseCliOptions } from '../server/options.js'
 
@@ -107,7 +108,8 @@ export async function main(args = process.argv.slice(2)) {
   const rootDir = await resolveRootDirectory(options.directory)
   await ensureClientBuild()
 
-  const app = createPdfApp({ rootDir, staticDir })
+  const config = initializeWorkspaceConfig(rootDir)
+  const app = createPdfApp({ rootDir, staticDir, config })
   const { server, port } = await listenOnAvailablePort(app, {
     host: options.host,
     port: options.port,
@@ -120,6 +122,8 @@ export async function main(args = process.argv.slice(2)) {
 
   console.log('PDF Local Preview 已启动')
   console.log(`目录：${rootDir}`)
+  console.log(`配置：${path.join(rootDir, '.pdf', 'config.json')}`)
+  if (hasLockPassword(config)) console.log(`解锁密码：${config.lockPassword}`)
   console.log(`地址：${url}`)
   if (options.host === '0.0.0.0' || options.host === '::') {
     for (const host of lanHosts()) {

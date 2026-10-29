@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -54,6 +54,7 @@ async function createFixture(t) {
 
       return {
         completion,
+        get output() { return stdout },
         waitForUrl() {
           return new Promise((resolve, reject) => {
             const checkOutput = () => {
@@ -80,6 +81,10 @@ test('CLI uses the command working directory when --dir is omitted', async (t) =
   const fixture = await createFixture(t)
   const cli = fixture.launch(['--port', '0'])
   const url = await cli.waitForUrl()
+  const config = JSON.parse(await readFile(path.join(fixture.root, '.pdf', 'config.json'), 'utf8'))
+  assert.equal(config.blurLockScreen, true)
+  assert.equal(config.lockPassword, '')
+  assert.doesNotMatch(cli.output, /解锁密码：/)
   const result = await fetch(`${url}/api/tree`).then((response) => response.json())
 
   assert.equal(result.rootName, path.basename(fixture.root))
@@ -91,6 +96,8 @@ test('CLI serves an absolute --dir containing spaces and Chinese characters', as
   const fixture = await createFixture(t)
   const cli = fixture.launch(['--dir', fixture.directory, '--port=0'])
   const url = await cli.waitForUrl()
+  await access(path.join(fixture.directory, '.pdf', 'config.json'))
+  await assert.rejects(access(path.join(fixture.root, '.pdf', 'config.json')), { code: 'ENOENT' })
   const result = await fetch(`${url}/api/tree`).then((response) => response.json())
 
   assert.equal(result.rootName, path.basename(fixture.directory))
@@ -115,6 +122,36 @@ test('CLI resolves relative -d and --dir= paths against the command working dire
     assert.equal(result.rootName, path.basename(fixture.directory))
     assert.equal(result.count, 1)
   }
+})
+
+test('CLI preserves an existing config and password across repeated starts', async (t) => {
+  const fixture = await createFixture(t)
+  const configPath = path.join(fixture.directory, '.pdf', 'config.json')
+  const contents = '{ "blurLockScreen": false, "lockPassword": "0088", "custom": true }\n'
+  await mkdir(path.dirname(configPath))
+  await writeFile(configPath, contents)
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const cli = fixture.launch(['--dir', fixture.directory, '--port', '0'])
+    const url = await cli.waitForUrl()
+    const config = await fetch(`${url}/api/config`).then((response) => response.json())
+    assert.equal(config.blurLockScreen, false)
+    assert.equal(await readFile(configPath, 'utf8'), contents)
+    assert.ok(cli.output.includes('解锁密码：0088'))
+  }
+})
+
+test('CLI reports malformed config without overwriting it or starting the server', async (t) => {
+  const fixture = await createFixture(t)
+  const configPath = path.join(fixture.root, '.pdf', 'config.json')
+  await mkdir(path.dirname(configPath))
+  await writeFile(configPath, '{broken')
+
+  const result = await fixture.launch(['--port', '0']).completion
+  assert.equal(result.code, 1)
+  assert.ok(result.stderr.includes(configPath), result.stderr)
+  assert.doesNotMatch(result.stdout, /已启动|地址：/)
+  assert.equal(await readFile(configPath, 'utf8'), '{broken')
 })
 
 test('CLI binds an explicitly selected available port', async (t) => {
