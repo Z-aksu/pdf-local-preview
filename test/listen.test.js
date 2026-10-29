@@ -70,13 +70,13 @@ test('listenOnAvailablePort retries consecutive occupied ports in order', async 
 
   const result = await listenOnAvailablePort(app, {
     host: '127.0.0.1',
-    port: 3210,
+    port: 41221,
     onPortInUse: (occupiedPort, nextPort) => retries.push([occupiedPort, nextPort]),
   })
 
   assert.equal(result.port, 3212)
-  assert.deepEqual(attemptedPorts, [3210, 3211, 3212])
-  assert.deepEqual(retries, [[3210, 3211], [3211, 3212]])
+  assert.deepEqual(attemptedPorts, [41221, 3211, 3212])
+  assert.deepEqual(retries, [[41221, 3211], [3211, 3212]])
 })
 
 test('listenOnAvailablePort rejects an occupied explicit port without retrying', async (context) => {
@@ -133,7 +133,7 @@ test('listenOnAvailablePort does not hide non-conflict errors', async () => {
   }
 
   await assert.rejects(
-    listenOnAvailablePort(app, { host: '127.0.0.1', port: 3210 }),
+    listenOnAvailablePort(app, { host: '127.0.0.1', port: 41221 }),
     (error) => error === expectedError,
   )
 })

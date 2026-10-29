@@ -1,6 +1,6 @@
 const DEFAULT_OPTIONS = Object.freeze({
   directory: '.',
-  port: 3210,
+  port: 41221,
   portSpecified: false,
   host: '0.0.0.0',
   open: true,

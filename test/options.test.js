@@ -6,7 +6,7 @@ import { parseCliOptions } from '../server/options.js'
 test('parseCliOptions enables LAN access by default', () => {
   assert.deepEqual(parseCliOptions([]), {
     directory: '.',
-    port: 3210,
+    port: 41221,
     portSpecified: false,
     host: '0.0.0.0',
     open: true,
@@ -44,7 +44,7 @@ test('parseCliOptions accepts directory flags and preserves paths containing spa
   ]) {
     const options = parseCliOptions(args)
     assert.equal(options.directory, 'D:\\PDF 资料')
-    assert.equal(options.port, 3210)
+    assert.equal(options.port, 41221)
     assert.equal(options.portSpecified, false)
   }
 })
@@ -63,7 +63,7 @@ test('parseCliOptions accepts directory and port options in either order', () =>
 })
 
 test('parseCliOptions recognizes explicitly selected default and boundary ports', () => {
-  for (const port of [0, 3210, 65535]) {
+  for (const port of [0, 41221, 65535]) {
     const options = parseCliOptions(['--port', String(port)])
     assert.equal(options.port, port)
     assert.equal(options.portSpecified, true)
