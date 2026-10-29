@@ -1,0 +1,32 @@
+{
+  "name": "pdf-local-preview",
+  "version": "1.0.0",
+  "description": "Browse and preview PDFs below the current directory with a local Vue and PDF.js reader.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "pdf-view": "./bin/pdf-view.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "node --test",
+    "start": "node ./bin/pdf-view.js",
+    "start:lan": "node ./bin/pdf-view.js --lan",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "pdfjs-dist": "^4.10.38",
+    "vite": "^6.1.0",
+    "vue": "^3.5.13"
+  }
+}
