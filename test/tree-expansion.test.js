@@ -20,9 +20,14 @@ test.after(async () => {
   await vite?.close()
 })
 
-async function renderComponent(modulePath, props) {
+async function renderComponent(modulePath, props, language = 'en') {
   const { default: component } = await vite.ssrLoadModule(modulePath)
-  return renderToString(createSSRApp(component, props))
+  const { createI18n, I18N_KEY } = await vite.ssrLoadModule('/src/i18n.js')
+  const app = createSSRApp(component, props)
+  app.provide(I18N_KEY, createI18n(language))
+  const context = {}
+  const html = await renderToString(app, context)
+  return html + Object.values(context.teleports || {}).join('')
 }
 
 test('document tab picker exposes its count and an accessible collapsed trigger', async () => {
@@ -35,7 +40,7 @@ test('document tab picker exposes its count and an accessible collapsed trigger'
     activePath: tabs[8].path,
   })
 
-  assert.match(html, /aria-label="查看 16 个已打开文档"/)
+  assert.match(html, /aria-label="View 16 open documents"/)
   assert.match(html, /aria-haspopup="dialog"/)
   assert.match(html, /aria-expanded="false"/)
   assert.match(html, /aria-controls="document-tab-picker-panel"/)
@@ -129,8 +134,8 @@ test('outline tree mounts nested bookmarks with the current collapse command', a
 test('app renders the sidebar collapse and resize controls', async () => {
   const html = await renderComponent('/src/App.vue', {})
 
-  assert.match(html, /收起文件目录/)
-  assert.match(html, /调整侧栏宽度/)
+  assert.match(html, /Collapse file browser/)
+  assert.match(html, /Resize sidebar/)
   assert.match(html, /aria-valuemin="220"/)
 })
 
@@ -141,7 +146,7 @@ test('file rows render an accessible favorite toggle without removing the file a
     favoritePaths: [file.path],
   })
 
-  assert.match(html, /取消收藏 文档\.pdf/)
+  assert.match(html, /Remove 文档\.pdf from favorites/)
   assert.match(html, /aria-pressed="true"/)
   assert.match(html, />文档\.pdf</)
 })
@@ -152,7 +157,7 @@ test('pdf viewer exposes the mobile landscape reading control', async () => {
     fileName: '文档.pdf',
   })
 
-  assert.match(html, /进入横屏阅读/)
+  assert.match(html, /Enter landscape reading/)
   assert.match(html, /aria-pressed="false"/)
 
   const activeHtml = await renderComponent('/src/components/PdfViewer.vue', {
@@ -161,7 +166,7 @@ test('pdf viewer exposes the mobile landscape reading control', async () => {
     readingMode: true,
   })
 
-  assert.match(activeHtml, /退出横屏阅读/)
+  assert.match(activeHtml, /Exit landscape reading/)
   assert.match(activeHtml, /aria-pressed="true"/)
 })
 
@@ -201,7 +206,7 @@ test('pdf viewer exposes the non-destructive focus mode control', async () => {
     fileName: '文档.pdf',
   })
 
-  assert.match(html, /进入专注模式/)
+  assert.match(html, /Enter focus mode/)
   assert.match(html, /Ctrl\+Shift\+F/)
 
   const focusHtml = await renderComponent('/src/components/PdfViewer.vue', {
@@ -211,9 +216,59 @@ test('pdf viewer exposes the non-destructive focus mode control', async () => {
   })
 
   assert.match(focusHtml, /class="focus-mode-exit-button"/)
-  assert.match(focusHtml, /aria-label="退出专注模式"/)
+  assert.match(focusHtml, /aria-label="Exit focus mode"/)
   const focusExitOpeningTag = focusHtml.match(/<button class="focus-mode-exit-button"[^>]*>/)?.[0]
   assert.ok(focusExitOpeningTag)
   assert.doesNotMatch(focusExitOpeningTag, /aria-hidden="true"/)
   assert.doesNotMatch(focusExitOpeningTag, /tabindex="-1"/)
+})
+
+test('Chinese reader renders localized settings, sidebar and empty states without a language control', async () => {
+  const html = await renderComponent('/src/App.vue', {}, 'zh')
+  assert.match(html, /aria-label="打开阅读设置"/)
+  assert.match(html, /<h1>文件目录<\/h1>/)
+  assert.match(html, /aria-label="收起所有层级"/)
+  assert.match(html, /等待一份文档/)
+  assert.match(html, /正在整理目录/)
+  assert.doesNotMatch(html, /Reader settings|File browser|Ready for a document/)
+  assert.doesNotMatch(html, /<select|language-select|language-switch/)
+})
+
+test('Chinese document controls and accessible labels preserve file names', async () => {
+  const file = { type: 'file', name: '文档.pdf', path: '资料/文档.pdf' }
+  const viewer = await renderComponent('/src/components/PdfViewer.vue', { src: '/api/pdf?path=fixture.pdf', fileName: file.name }, 'zh')
+  assert.match(viewer, /aria-label="正在阅读 文档.pdf"/)
+  assert.match(viewer, /aria-label="翻页工具"/)
+  assert.match(viewer, /title="下一页"/)
+  assert.match(viewer, /aria-label="进入专注模式"/)
+  assert.match(viewer, /正在打开文档/)
+
+  const tree = await renderComponent('/src/components/TreeNode.vue', { node: file, favoritePaths: [file.path] }, 'zh')
+  assert.match(tree, /aria-label="取消收藏 文档.pdf"/)
+  assert.match(tree, />文档.pdf</)
+
+  const picker = await renderComponent('/src/components/DocumentTabPicker.vue', { tabs: [file] }, 'zh')
+  assert.match(picker, /aria-label="查看 1 个已打开文档"/)
+
+  const outline = await renderComponent('/src/components/OutlineNode.vue', {
+    node: { title: 'Chapter 1', pageNumber: 1, items: [{ title: 'Section', pageNumber: 2, items: [] }] },
+  }, 'zh')
+  assert.match(outline, /aria-label="折叠 Chapter 1"/)
+  assert.match(outline, /title="跳转到第 1 页"/)
+})
+
+test('lock-screen calendar and connection states follow the configured language', async () => {
+  const props = { ready: false, configError: 'offline', loading: false }
+  const chinese = await renderComponent('/src/components/LockScreen.vue', props, 'zh')
+  assert.match(chinese, /aria-label="日期与时间"/)
+  assert.match(chinese, /aria-label="本月日历"/)
+  assert.match(chinese, /<span>一<\/span>/)
+  assert.match(chinese, /暂时无法连接，请重试。/)
+  assert.match(chinese, />重试</)
+  assert.doesNotMatch(chinese, /Monthly calendar|Mon|Retry/)
+
+  const english = await renderComponent('/src/components/LockScreen.vue', props)
+  assert.match(english, /aria-label="Monthly calendar"/)
+  assert.match(english, /<span>Mon<\/span>/)
+  assert.match(english, />Retry</)
 })

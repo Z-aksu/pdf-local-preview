@@ -1,7 +1,10 @@
 <script setup>
+import { useI18n } from '../i18n.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { getNextMenuItemIndex } from '../tab-context-menu.js'
+
+const { t } = useI18n()
 
 const props = defineProps({
   tabs: { type: Array, required: true },
@@ -29,7 +32,7 @@ function setItemElement(path, element) {
 function parentDirectory(path) {
   const normalizedPath = path.replace(/\\/g, '/')
   const separator = normalizedPath.lastIndexOf('/')
-  return separator > 0 ? normalizedPath.slice(0, separator) : '根目录'
+  return separator > 0 ? normalizedPath.slice(0, separator) : t('Root directory')
 }
 
 function focusItem(path) {
@@ -129,8 +132,8 @@ onBeforeUnmount(() => {
       :class="{ 'document-tab-picker-trigger--open': isOpen }"
       type="button"
       :disabled="disabled"
-      :title="`查看 ${tabs.length} 个已打开文档`"
-      :aria-label="`查看 ${tabs.length} 个已打开文档`"
+      :title="t(tabs.length === 1 ? 'View {count} open document' : 'View {count} open documents', { count: tabs.length })"
+      :aria-label="t(tabs.length === 1 ? 'View {count} open document' : 'View {count} open documents', { count: tabs.length })"
       aria-haspopup="dialog"
       :aria-expanded="isOpen"
       aria-controls="document-tab-picker-panel"
@@ -149,14 +152,14 @@ onBeforeUnmount(() => {
       ref="panelElement"
       class="document-tab-picker-panel"
       role="dialog"
-      aria-label="已打开文档"
+      :aria-label="t('Open documents')"
       @keydown="handleMenuKeydown"
     >
       <div class="document-tab-picker-heading">
-        <span>已打开文档</span>
+        <span>{{ t("Open documents") }}</span>
         <span>{{ tabs.length }}</span>
       </div>
-      <ul class="document-tab-picker-list" aria-label="已打开文档列表">
+      <ul class="document-tab-picker-list" :aria-label="t('Open document list')">
         <li
           v-for="tab in tabs"
           :key="tab.path"
@@ -180,8 +183,8 @@ onBeforeUnmount(() => {
           <button
             class="document-tab-picker-close"
             type="button"
-            :aria-label="`关闭 ${tab.name}`"
-            :title="`关闭 ${tab.path}`"
+            :aria-label="t('Close {name}', { name: tab.name })"
+            :title="t('Close {name}', { name: tab.path })"
             @click="closeTab(tab.path)"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>

@@ -65,13 +65,9 @@ test('sidebars retain compact, readable hierarchy controls at every width', () =
   assert.match(styles, /\.sidebar-expansion-actions button\s*\{[^}]*height:\s*24px/)
   assert.match(styles, /\.sidebar-expansion-actions button:focus-visible\s*\{[^}]*outline:/)
   assert.doesNotMatch(styles, /\.sidebar-expansion-actions button span\s*\{[^}]*display:\s*none/)
-  assert.match(appSource, /class="sidebar-expansion-actions" role="group" aria-label="目录层级操作"/)
-  for (const label of ['收起', '展开']) {
-    assert.ok(appSource.includes(`<span><span class="sidebar-expansion-label-prefix">全部</span>${label}</span>`))
-  }
-  for (const label of ['收起所有层级', '展开所有层级']) {
-    assert.match(appSource, new RegExp(`title="${label}"\\s+aria-label="${label}"`))
-  }
+  assert.match(appSource, /class="sidebar-expansion-actions" role="group" :aria-label=/)
+  assert.match(viewerSource, /class="toolbar-group toolbar-group--pages"/)
+  assert.doesNotMatch(styles, /\[aria-label=/)
 })
 
 test('mobile focus mode keeps a safe touch-sized exit control', () => {

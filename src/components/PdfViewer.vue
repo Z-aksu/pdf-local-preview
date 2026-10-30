@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '../i18n.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
@@ -7,6 +8,8 @@ import { normalizeOutlineTree } from '../outline.js'
 import { createReadingPositionTracker, resolveScrollAnchor } from '../scroll-position.js'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+
+const { t, language } = useI18n()
 
 const props = defineProps({
   src: {
@@ -285,7 +288,7 @@ async function renderPage(pageNumber) {
       && generation === documentGeneration
     ) {
       pageState.status = hadRenderedCanvas ? 'ready' : 'error'
-      pageState.error = '本页渲染失败'
+      pageState.error = t('Unable to render this page.')
     }
   } finally {
     if (renderTasks.get(pageNumber) === activeRenderTask) {
@@ -319,6 +322,8 @@ async function loadOutline(document, generation) {
     const outline = await normalizeOutlineTree(
       rawOutline,
       (destination) => resolveOutlineDestination(document, destination),
+      'outline',
+      language.value,
     )
     if (generation !== documentGeneration || document !== pdfDocument) return
     emit('outline-change', { status: 'ready', items: outline })
@@ -868,8 +873,8 @@ async function loadDocument() {
     if (generation === documentGeneration) {
       loading.value = false
       errorMessage.value = error?.name === 'PasswordException'
-        ? '该 PDF 受密码保护，暂时无法打开。'
-        : `无法打开这份 PDF：${error.message || '文件可能已损坏'}`
+        ? t('This PDF is password protected and cannot be opened.')
+        : t('Unable to open this PDF: {message}', { message: error.message || t('The file may be damaged.') })
     }
   }
 }
@@ -887,9 +892,6 @@ onMounted(() => {
   if (props.active) createIntersectionObserver()
   resizeObserver = new ResizeObserver((entries) => {
     if (!props.active || props.suppressResizeRender) {
-      // Focus mode keeps the existing canvas dimensions, but responsive gaps
-      // and viewport height still change when the device rotates.
-      if (props.active && props.focusMode) restoreReadingPosition()
       return
     }
     if (entries[0].contentRect.width) {
@@ -969,56 +971,56 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
     :class="{
       'pdf-viewer--landscape': landscapeReading,
     }"
-    :aria-label="`正在阅读 ${fileName}`"
+    :aria-label="t('Reading {name}', { name: fileName })"
   >
     <header class="reader-toolbar">
       <div class="document-identity">
         <span class="document-badge">PDF</span>
         <div>
           <strong :title="fileName">{{ fileName }}</strong>
-          <span v-if="totalPages">{{ totalPages }} 页</span>
-          <span v-else>正在读取文档</span>
+          <span v-if="totalPages">{{ t(totalPages === 1 ? '{count} page' : '{count} pages', { count: totalPages }) }}</span>
+          <span v-else>{{ t("Loading document") }}</span>
         </div>
       </div>
 
-      <div class="toolbar-group" aria-label="翻页工具">
-        <button class="toolbar-button" type="button" title="上一页" :disabled="currentPage <= 1" @click="scrollToPage(currentPage - 1)">
+      <div class="toolbar-group toolbar-group--pages" :aria-label="t('Page navigation')">
+        <button class="toolbar-button" type="button" :title="t('Previous page')" :disabled="currentPage <= 1" @click="scrollToPage(currentPage - 1)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 5-5 5 5 5" /></svg>
         </button>
         <label class="page-control">
-          <span class="sr-only">当前页</span>
+          <span class="sr-only">{{ t("Current page") }}</span>
           <input :value="currentPage" type="number" min="1" step="1" :max="totalPages || 1" @change="handlePageInput" />
           <span>/ {{ totalPages || '—' }}</span>
         </label>
-        <button class="toolbar-button" type="button" title="下一页" :disabled="currentPage >= totalPages" @click="scrollToPage(currentPage + 1)">
+        <button class="toolbar-button" type="button" :title="t('Next page')" :disabled="currentPage >= totalPages" @click="scrollToPage(currentPage + 1)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5" /></svg>
         </button>
       </div>
 
-      <div class="toolbar-group toolbar-group--zoom" aria-label="缩放工具">
-        <button class="toolbar-button" type="button" title="缩小" :disabled="zoom <= 0.5" @click="changeZoom(-0.15)">
+      <div class="toolbar-group toolbar-group--zoom" :aria-label="t('Zoom controls')">
+        <button class="toolbar-button" type="button" :title="t('Zoom out')" :disabled="zoom <= 0.5" @click="changeZoom(-0.15)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10" /></svg>
         </button>
-        <button class="zoom-indicator" type="button" title="恢复适合宽度" @click="fitWidth">{{ zoomLabel }}</button>
-        <button class="toolbar-button" type="button" title="放大" :disabled="zoom >= 2.5" @click="changeZoom(0.15)">
+        <button class="zoom-indicator" type="button" :title="t('Reset to fit width')" @click="fitWidth">{{ zoomLabel }}</button>
+        <button class="toolbar-button" type="button" :title="t('Zoom in')" :disabled="zoom >= 2.5" @click="changeZoom(0.15)">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10M10 5v10" /></svg>
         </button>
-        <button class="toolbar-button toolbar-button--labeled" type="button" title="适合宽度" @click="fitWidth">
+        <button class="toolbar-button toolbar-button--labeled" type="button" :title="t('Fit to width')" @click="fitWidth">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6V3h3M14 3h3v3M17 14v3h-3M6 17H3v-3M6 10h8" /></svg>
-          <span>适宽</span>
+          <span>{{ t("Fit width") }}</span>
         </button>
-        <button class="toolbar-button" type="button" title="顺时针旋转" @click="rotateClockwise">
+        <button class="toolbar-button" type="button" :title="t('Rotate clockwise')" @click="rotateClockwise">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 7A6 6 0 1 0 16 12M15.5 3v4h-4" /></svg>
         </button>
-        <a class="toolbar-button" :href="src" :download="fileName" title="下载 PDF">
+        <a class="toolbar-button" :href="src" :download="fileName" :title="t('Download PDF')">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9M6.5 8.5 10 12l3.5-3.5M4 16h12" /></svg>
         </a>
         <button
           class="toolbar-button reader-mode-button"
           :class="{ 'reader-mode-button--active': readingModeActive }"
           type="button"
-          :title="readingModeActive ? '退出横屏阅读 (Esc)' : '进入横屏阅读'"
-          :aria-label="readingModeActive ? '退出横屏阅读' : '进入横屏阅读'"
+          :title="t(readingModeActive ? 'Exit landscape reading (Esc)' : 'Enter landscape reading')"
+          :aria-label="t(readingModeActive ? 'Exit landscape reading' : 'Enter landscape reading')"
           :aria-pressed="readingModeActive"
           @click="toggleReadingExperience"
         >
@@ -1028,21 +1030,21 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
           <svg v-else viewBox="0 0 20 20" aria-hidden="true">
             <path d="M8 3H3v5M12 3h5v5M8 17H3v-5M12 17h5v-5" />
           </svg>
-          <span>{{ readingModeActive ? '退出横屏' : '横屏阅读' }}</span>
+          <span>{{ t(readingModeActive ? 'Exit landscape' : 'Landscape') }}</span>
         </button>
         <button
           class="toolbar-button focus-mode-button"
           :class="{ 'focus-mode-button--active': focusMode }"
           type="button"
-          :title="focusMode ? '退出专注模式 (Esc / Ctrl+Shift+F)' : '专注模式 (Ctrl+Shift+F)'"
-          :aria-label="focusMode ? '退出专注模式' : '进入专注模式'"
+          :title="t(focusMode ? 'Exit focus mode (Esc / Ctrl+Shift+F)' : 'Focus mode (Ctrl+Shift+F)')"
+          :aria-label="t(focusMode ? 'Exit focus mode' : 'Enter focus mode')"
           :aria-pressed="focusMode"
           @click="emit('toggle-focus-mode')"
         >
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path d="M7 3H3v4M13 3h4v4M17 13v4h-4M7 17H3v-4" />
           </svg>
-          <span>{{ focusMode ? '退出专注' : '专注' }}</span>
+          <span>{{ t(focusMode ? 'Exit focus' : 'Focus') }}</span>
         </button>
       </div>
     </header>
@@ -1050,7 +1052,7 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
     <nav
       v-if="focusTabSwitchEnabled && focusMode && active && tabItems.length"
       class="focus-tab-switcher"
-      aria-label="专注模式页签快速切换"
+      :aria-label="t('Quick tab switching in focus mode')"
     >
       <button
         v-for="(tab, index) in tabItems"
@@ -1058,7 +1060,7 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
         class="focus-tab-switcher-button"
         :class="{ 'focus-tab-switcher-button--active': tab.path === activeTabPath }"
         type="button"
-        :aria-label="`切换到第 ${index + 1} 个页签：${tab.name}`"
+        :aria-label="t('Switch to tab {number}: {name}', { number: index + 1, name: tab.name })"
         :aria-current="tab.path === activeTabPath ? 'page' : undefined"
         :title="tab.name"
         @click="emit('switch-tab', tab.path)"
@@ -1074,15 +1076,15 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
     >
       <div v-if="loading" class="reader-status" aria-live="polite">
         <span class="document-loader"><i /><i /><i /></span>
-        <strong>正在打开文档</strong>
-        <span>PDF.js 正在分析页面结构…</span>
+        <strong>{{ t("Opening document") }}</strong>
+        <span>{{ t("PDF.js is analyzing the page structure…") }}</span>
       </div>
 
       <div v-else-if="errorMessage" class="reader-status reader-status--error" role="alert">
         <span class="error-seal">!</span>
-        <strong>文档无法打开</strong>
+        <strong>{{ t("Unable to open document") }}</strong>
         <span>{{ errorMessage }}</span>
-        <button class="text-button" type="button" @click="loadDocument">重新加载</button>
+        <button class="text-button" type="button" @click="loadDocument">{{ t("Reload") }}</button>
       </div>
 
       <div v-else class="pdf-pages">
@@ -1094,7 +1096,7 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
           :class="{ 'pdf-page--active': page.number === currentPage }"
           :data-page-number="page.number"
           :style="pageStyle(page)"
-          :aria-label="`第 ${page.number} 页`"
+          :aria-label="t('Page {number}', { number: page.number })"
         >
           <canvas :ref="(element) => setCanvasElement(page.number, element)" />
           <div v-if="page.status === 'loading' || page.status === 'idle'" class="page-loading">
@@ -1111,14 +1113,14 @@ watch(() => props.suppressResizeRender, (suppress, wasSuppressed) => {
       v-if="focusMode"
       class="focus-mode-exit-button"
       type="button"
-      title="退出专注模式"
-      aria-label="退出专注模式"
+      :title="t('Exit focus mode')"
+      :aria-label="t('Exit focus mode')"
       @click="emit('toggle-focus-mode')"
     >
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <path d="M8 4H4v12h4M11 7l3 3-3 3M14 10H7" />
       </svg>
-      <span>退出</span>
+      <span>{{ t("Exit") }}</span>
     </button>
   </section>
 </template>

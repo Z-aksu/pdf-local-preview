@@ -1,4 +1,6 @@
-export async function normalizeOutlineTree(items, resolveDestination, parentId = 'outline') {
+import { DEFAULT_LANGUAGE, translate } from '../shared/localization.js'
+
+export async function normalizeOutlineTree(items, resolveDestination, parentId = 'outline', language = DEFAULT_LANGUAGE) {
   if (!Array.isArray(items)) return []
 
   const normalized = []
@@ -14,9 +16,9 @@ export async function normalizeOutlineTree(items, resolveDestination, parentId =
 
     normalized.push({
       id: `${parentId}-${index}`,
-      title: typeof item?.title === 'string' && item.title.trim() ? item.title.trim() : '未命名章节',
+      title: typeof item?.title === 'string' && item.title.trim() ? item.title.trim() : translate(language, 'Untitled section'),
       pageNumber: Number.isInteger(target?.pageNumber) ? target.pageNumber : null,
-      items: await normalizeOutlineTree(item?.items, resolveDestination, `${parentId}-${index}`),
+      items: await normalizeOutlineTree(item?.items, resolveDestination, `${parentId}-${index}`, language),
     })
   }
 

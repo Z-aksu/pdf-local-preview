@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from '../i18n.js'
 import { computed, ref, watch } from 'vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   node: {
@@ -50,7 +53,7 @@ function toggleNode(event) {
         :class="{ 'outline-chevron--open': expanded }"
         type="button"
         :aria-expanded="expanded"
-        :aria-label="expanded ? `折叠 ${node.title}` : `展开 ${node.title}`"
+        :aria-label="t(expanded ? 'Collapse {name}' : 'Expand {name}', { name: node.title })"
         @click="toggleNode"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" /></svg>
@@ -63,7 +66,7 @@ function toggleNode(event) {
           'outline-row--available': node.pageNumber,
           'outline-row--unavailable': !node.pageNumber,
         }"
-        :title="node.pageNumber ? `跳转到第 ${node.pageNumber} 页` : '该节点没有可用的页内定位'"
+        :title="node.pageNumber ? t('Go to page {number}', { number: node.pageNumber }) : t('No page destination available')"
         type="button"
         :disabled="!node.pageNumber"
         @click="selectNode"

@@ -16,7 +16,7 @@ function sourceBetween(source, start, end) {
 test('pointer dragging suppresses PDF resize rendering until the sidebar is released', () => {
   assert.match(
     appSource,
-    /:suppress-resize-render="resizingSidebar \|\| focusMode"/,
+    /:suppress-resize-render="resizingSidebar"/,
   )
 
   const resizeObserverSource = sourceBetween(
@@ -30,15 +30,15 @@ test('pointer dragging suppresses PDF resize rendering until the sidebar is rele
   )
 })
 
-test('focus mode restores responsive spacing without resizing or invalidating canvases', () => {
-  const suppressedResizeSource = sourceBetween(
+test('focus mode uses the same position-preserving resize debounce as normal reading', () => {
+  const resizeObserverSource = sourceBetween(
     viewerSource,
-    'if (!props.active || props.suppressResizeRender) {',
-    'if (entries[0].contentRect.width)',
+    'resizeObserver = new ResizeObserver',
+    'if (props.active && viewportElement.value)',
   )
 
-  assert.match(suppressedResizeSource, /if \(props\.active && props\.focusMode\) restoreReadingPosition\(\)/)
-  assert.doesNotMatch(suppressedResizeSource, /invalidateVisiblePages|scheduleResizeRender|viewportWidth\.value =/)
+  assert.doesNotMatch(resizeObserverSource, /props\.focusMode|viewportWidth\.value =|invalidateVisiblePages/)
+  assert.match(resizeObserverSource, /scheduleResizeRender\(\)/)
 })
 
 test('continuous viewport changes debounce to one position-preserving resize commit', () => {

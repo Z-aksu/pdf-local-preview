@@ -101,7 +101,7 @@ test('unknown API routes return JSON instead of the application shell', async (t
   const response = await fetch(`${baseUrl}/api/missing`)
 
   assert.equal(response.status, 404)
-  assert.deepEqual(await response.json(), { error: '接口不存在' })
+  assert.deepEqual(await response.json(), { error: 'API endpoint not found.' })
 })
 
 test('configuration is initialized before requests and only public settings reach the browser', async (t) => {
@@ -115,7 +115,8 @@ test('configuration is initialized before requests and only public settings reac
   assert.equal(result.blurLockScreen, false)
   assert.equal(result.hasLockPassword, false)
   assert.match(result.workspaceId, /^[a-f0-9]{24}$/)
-  assert.deepEqual(Object.keys(result).sort(), ['blurLockScreen', 'hasLockPassword', 'workspaceId'])
+  assert.equal(result.language, 'en')
+  assert.deepEqual(Object.keys(result).sort(), ['blurLockScreen', 'hasLockPassword', 'language', 'workspaceId'])
   assert.equal(config.lockPassword, '')
   const tree = await fetch(`${baseUrl}/api/tree`).then((response) => response.json())
   assert.equal(tree.workspaceId, result.workspaceId)
@@ -138,7 +139,7 @@ test('unlock validates custom passwords on the server and does not disclose them
   const wrong = await unlock({ password: '9999' })
   assert.equal(wrong.status, 401)
   assert.equal(wrong.headers.get('cache-control'), 'no-store')
-  assert.deepEqual(await wrong.json(), { error: '密码错误，请重试' })
+  assert.deepEqual(await wrong.json(), { error: 'Incorrect password. Please try again.' })
   const invalid = await unlock({ password: 42 })
   assert.equal(invalid.status, 400)
   const correct = await unlock({ password: '0042' })
@@ -157,6 +158,28 @@ test('respects disabled locking and numeric custom passwords', async (t) => {
     body: JSON.stringify({ password: '1234' }),
   })
   assert.equal(response.status, 200)
+})
+
+test('configured Chinese language reaches the browser and localizes API errors', async (t) => {
+  const { baseUrl } = await startFixtureServer(t, { blurLockScreen: true, lockPassword: '0042', language: 'zh' })
+  const config = await fetch(`${baseUrl}/api/config`).then((response) => response.json())
+  assert.equal(config.language, 'zh')
+  assert.equal(Object.hasOwn(config, 'lockPassword'), false)
+
+  const missing = await fetch(`${baseUrl}/api/missing`)
+  assert.equal(missing.status, 404)
+  assert.deepEqual(await missing.json(), { error: '接口不存在。' })
+
+  const invalidPath = await fetch(`${baseUrl}/api/pdf?path=notes.txt`)
+  assert.equal(invalidPath.status, 400)
+  assert.deepEqual(await invalidPath.json(), { error: '只能访问 PDF 文件。' })
+
+  const wrongPassword = await fetch(`${baseUrl}/api/unlock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'wrong' }),
+  })
+  assert.equal(wrongPassword.status, 401)
+  assert.deepEqual(await wrongPassword.json(), { error: '密码错误，请重试。' })
 })
 
 test('empty passwords allow resuming without a password while blur protection remains enabled', async (t) => {

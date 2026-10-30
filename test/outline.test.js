@@ -3,6 +3,12 @@ import test from 'node:test'
 
 import { countOutlineItems, normalizeOutlineTree } from '../src/outline.js'
 
+test('unnamed outline entries use the configured language at every depth', async () => {
+  const items = await normalizeOutlineTree([{ title: '', items: [{ title: '' }] }], async () => null, 'outline', 'zh')
+  assert.equal(items[0].title, '未命名章节')
+  assert.equal(items[0].items[0].title, '未命名章节')
+})
+
 test('normalizeOutlineTree resolves nested destinations and keeps unavailable entries', async () => {
   const destinations = new Map([
     ['intro', { pageNumber: 2 }],
@@ -22,7 +28,7 @@ test('normalizeOutlineTree resolves nested destinations and keeps unavailable en
       pageNumber: 2,
       items: [{ id: 'outline-0-0', title: '细节', pageNumber: 5, items: [] }],
     },
-    { id: 'outline-1', title: '未命名章节', pageNumber: null, items: [] },
+    { id: 'outline-1', title: 'Untitled section', pageNumber: null, items: [] },
   ])
   assert.equal(countOutlineItems(items), 3)
 })

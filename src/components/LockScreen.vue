@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from '../i18n.js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+const { t, locale } = useI18n()
 
 const props = defineProps({
   ready: Boolean,
@@ -17,16 +20,16 @@ const entryOpen = ref(false)
 const now = ref(new Date())
 let clockTimer = null
 
-const timeLabel = computed(() => now.value.toLocaleTimeString('zh-CN', {
+const timeLabel = computed(() => now.value.toLocaleTimeString(locale.value, {
   hour: '2-digit', minute: '2-digit', hour12: false,
 }))
-const dateLabel = computed(() => now.value.toLocaleDateString('zh-CN', {
+const dateLabel = computed(() => now.value.toLocaleDateString(locale.value, {
   month: 'long', day: 'numeric', weekday: 'long',
 }))
-const monthLabel = computed(() => now.value.toLocaleDateString('zh-CN', {
+const monthLabel = computed(() => now.value.toLocaleDateString(locale.value, {
   year: 'numeric', month: 'long',
 }))
-const monthCaption = computed(() => now.value.toLocaleDateString('en-US', {
+const monthCaption = computed(() => now.value.toLocaleDateString(locale.value, {
   month: 'long', year: 'numeric',
 }).toUpperCase())
 const calendarDays = computed(() => {
@@ -107,7 +110,7 @@ watch(() => props.passwordRequired, () => {
       ref="dialogElement"
       class="lock-screen"
       tabindex="-1"
-      aria-label="日期与时间"
+      :aria-label="t('Date and time')"
       @cancel.prevent
       @keydown.stop="handleKeydown"
     >
@@ -118,18 +121,18 @@ watch(() => props.passwordRequired, () => {
 
       <main class="desk-main">
         <div class="desk-paper">
-          <section class="desk-clock-card" aria-label="当前时间">
+          <section class="desk-clock-card" :aria-label="t('Current time')">
             <span class="desk-eyebrow">{{ monthCaption }}</span>
-            <button class="desk-clock" type="button" aria-label="当前时间" :aria-expanded="passwordRequired ? entryOpen : undefined" :disabled="!ready || busy" @click="handleClockClick">
+            <button class="desk-clock" type="button" :aria-label="t('Current time')" :aria-expanded="passwordRequired ? entryOpen : undefined" :disabled="!ready || busy" @click="handleClockClick">
               <time>{{ timeLabel }}</time>
             </button>
             <div class="desk-clock-bottom"><span class="desk-date-rule" /><span>{{ dateLabel }}</span></div>
             <div class="desk-clock-art" aria-hidden="true"><span /><span /><span /></div>
           </section>
 
-          <section class="desk-calendar-card" aria-label="本月日历">
+          <section class="desk-calendar-card" :aria-label="t('Monthly calendar')">
             <div class="desk-card-heading"><strong>{{ monthLabel }}</strong><span class="desk-calendar-mark" aria-hidden="true">·</span></div>
-            <div class="desk-calendar-week"><span v-for="day in ['一', '二', '三', '四', '五', '六', '日']" :key="day">{{ day }}</span></div>
+            <div class="desk-calendar-week"><span v-for="day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']" :key="day">{{ t(day) }}</span></div>
             <div class="desk-calendar-days">
               <span v-for="(day, index) in calendarDays" :key="index" :class="{ 'desk-calendar-today': day === now.getDate() }" :aria-current="day === now.getDate() ? 'date' : undefined">{{ day }}</span>
             </div>
@@ -140,16 +143,16 @@ watch(() => props.passwordRequired, () => {
 
       <div v-if="entryOpen || !ready || error" class="desk-entry-panel">
         <form v-if="ready && entryOpen && passwordRequired" class="lock-screen-form" :aria-busy="busy" @submit.prevent="submitPassword">
-          <input id="lock-screen-password" ref="passwordElement" v-model="password" name="entry" type="password" inputmode="numeric" autocomplete="off" aria-label="输入" placeholder="····" :disabled="busy" required>
-          <button class="desk-entry-submit" type="submit" aria-label="继续" :disabled="busy || !password">
+          <input id="lock-screen-password" ref="passwordElement" v-model="password" name="entry" type="password" inputmode="numeric" autocomplete="off" :aria-label="t('Password')" placeholder="····" :disabled="busy" required>
+          <button class="desk-entry-submit" type="submit" :aria-label="t('Continue')" :disabled="busy || !password">
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" /></svg>
           </button>
         </form>
         <p v-if="ready && error" class="desk-entry-error" role="alert">{{ error }}</p>
         <template v-if="!ready">
-          <p v-if="configError" class="desk-entry-error" role="alert">暂时无法连接，请重试。</p>
-          <p v-if="loading" class="desk-entry-status" role="status">正在准备…</p>
-          <button v-else class="desk-entry-submit desk-retry" type="button" @click="emit('retry')">重试</button>
+          <p v-if="configError" class="desk-entry-error" role="alert">{{ t("Unable to connect. Please try again.") }}</p>
+          <p v-if="loading" class="desk-entry-status" role="status">{{ t("Getting ready…") }}</p>
+          <button v-else class="desk-entry-submit desk-retry" type="button" @click="emit('retry')">{{ t("Retry") }}</button>
         </template>
       </div>
     </dialog>

@@ -23,6 +23,7 @@ test('initializes .pdf/config.json with disabled blur locking and an empty passw
 
   assert.equal(config.blurLockScreen, false)
   assert.equal(config.lockPassword, '')
+  assert.equal(config.language, 'en')
   assert.equal(hasLockPassword(config), false)
   assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')), config)
   assert.deepEqual(initializeWorkspaceConfig(root), config)
@@ -30,7 +31,7 @@ test('initializes .pdf/config.json with disabled blur locking and an empty passw
 
 test('preserves complete configuration byte for byte including custom passwords and extra fields', async (t) => {
   for (const enabled of [false, true]) {
-    const contents = `{ "blurLockScreen": ${enabled}, "lockPassword": "0042", "custom": { "keep": true } }\n`
+    const contents = `{ "blurLockScreen": ${enabled}, "lockPassword": "0042", "language": "zh", "custom": { "keep": true } }\n`
     const { root, configPath } = await fixture(t, contents)
 
     assert.deepEqual(initializeWorkspaceConfig(root), JSON.parse(contents))
@@ -76,7 +77,7 @@ test('rejects invalid configurations without replacing their contents', async (t
 
 test('preserves empty and whitespace-only passwords as unprotected configuration', async (t) => {
   for (const password of ['', '  ', '\t']) {
-    const contents = JSON.stringify({ blurLockScreen: true, lockPassword: password })
+    const contents = JSON.stringify({ blurLockScreen: true, lockPassword: password, language: 'en' })
     const { root, configPath } = await fixture(t, contents)
     const config = initializeWorkspaceConfig(root)
     assert.equal(config.lockPassword, password)
@@ -88,4 +89,34 @@ test('preserves empty and whitespace-only passwords as unprotected configuration
 test('recognizes zero and leading-zero strings as manually configured passwords', () => {
   assert.equal(hasLockPassword({ lockPassword: 0 }), true)
   assert.equal(hasLockPassword({ lockPassword: '0000' }), true)
+})
+
+test('migrates missing language to English while preserving all existing settings', async (t) => {
+  const { root, configPath } = await fixture(t, '{"blurLockScreen":true,"lockPassword":"0042","custom":{"keep":true}}')
+  const config = initializeWorkspaceConfig(root)
+  assert.deepEqual(config, { blurLockScreen: true, lockPassword: '0042', custom: { keep: true }, language: 'en' })
+  assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')), config)
+})
+
+test('accepts only the two supported language codes and preserves complete files', async (t) => {
+  for (const language of ['en', 'zh']) {
+    const contents = JSON.stringify({ blurLockScreen: false, lockPassword: '', language })
+    const { root, configPath } = await fixture(t, contents)
+    assert.equal(initializeWorkspaceConfig(root).language, language)
+    assert.equal(await readFile(configPath, 'utf8'), contents)
+  }
+})
+
+test('rejects unsupported language codes and types without migrating or overwriting the file', async (t) => {
+  for (const language of ['fr', 'EN', 'zh-CN', '', ' en ', null, false, 0, [], {}]) {
+    const contents = JSON.stringify({ language, custom: 'keep' })
+    const { root, configPath } = await fixture(t, contents)
+    assert.throws(() => initializeWorkspaceConfig(root), (error) => {
+      assert.ok(error.message.includes(configPath))
+      assert.match(error.message, /language/)
+      assert.match(error.message, /en.*zh/)
+      return true
+    })
+    assert.equal(await readFile(configPath, 'utf8'), contents)
+  }
 })

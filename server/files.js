@@ -1,6 +1,8 @@
 import { readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 
+import { DEFAULT_LANGUAGE, translate } from '../shared/localization.js'
+
 const SKIPPED_DIRECTORIES = new Set(['node_modules', '.git'])
 const collator = new Intl.Collator('zh-CN', {
   numeric: true,
@@ -90,19 +92,20 @@ export function countPdfFiles(nodes) {
   }, 0)
 }
 
-export async function resolvePdfPath(rootDir, requestedPath) {
+export async function resolvePdfPath(rootDir, requestedPath, language = DEFAULT_LANGUAGE) {
+  const t = (message) => translate(language, message)
   if (typeof requestedPath !== 'string' || requestedPath.trim() === '') {
-    throw createHttpError('缺少 PDF 文件路径', 400)
+    throw createHttpError(t('A PDF file path is required.'), 400)
   }
 
   if (path.extname(requestedPath).toLowerCase() !== '.pdf') {
-    throw createHttpError('只能访问 PDF 文件', 400)
+    throw createHttpError(t('Only PDF files can be accessed.'), 400)
   }
 
   const absoluteRoot = await realpath(path.resolve(rootDir))
   const unresolvedCandidate = path.resolve(absoluteRoot, requestedPath)
   if (!isInsideRoot(absoluteRoot, unresolvedCandidate)) {
-    throw createHttpError('禁止访问当前目录以外的文件', 403)
+    throw createHttpError(t('Access to files outside the current directory is not allowed.'), 403)
   }
 
   let candidate
@@ -110,18 +113,18 @@ export async function resolvePdfPath(rootDir, requestedPath) {
     candidate = await realpath(unresolvedCandidate)
   } catch (error) {
     if (error.code === 'ENOENT') {
-      throw createHttpError('PDF 文件不存在', 404)
+      throw createHttpError(t('PDF file not found.'), 404)
     }
     throw error
   }
 
   if (!isInsideRoot(absoluteRoot, candidate)) {
-    throw createHttpError('禁止访问当前目录以外的文件', 403)
+    throw createHttpError(t('Access to files outside the current directory is not allowed.'), 403)
   }
 
   const fileStat = await stat(candidate)
   if (!fileStat.isFile()) {
-    throw createHttpError('请求的路径不是文件', 400)
+    throw createHttpError(t('The requested path is not a file.'), 400)
   }
 
   return candidate

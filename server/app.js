@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { buildPdfTree, countPdfFiles, resolvePdfPath } from './files.js'
 import { hasLockPassword, initializeWorkspaceConfig } from './config.js'
+import { DEFAULT_LANGUAGE, isSupportedLanguage, LANGUAGE_HELP, translate } from '../shared/localization.js'
 
 function asyncRoute(handler) {
   return (request, response, next) => {
@@ -24,6 +25,9 @@ function createWorkspaceId(rootDir) {
 
 export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceConfig(rootDir) }) {
   const app = express()
+  const language = Object.hasOwn(config, 'language') ? config.language : DEFAULT_LANGUAGE
+  if (!isSupportedLanguage(language)) throw new Error(`Unsupported language. Supported languages: ${LANGUAGE_HELP}.`)
+  const t = (message) => translate(language, message)
   const absoluteRoot = path.resolve(rootDir)
   const workspaceId = createWorkspaceId(absoluteRoot)
 
@@ -51,7 +55,7 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
 
   app.get('/api/config', (_request, response) => {
     response.setHeader('Cache-Control', 'no-store')
-    response.json({ workspaceId, blurLockScreen: config.blurLockScreen, hasLockPassword: hasLockPassword(config) })
+    response.json({ workspaceId, blurLockScreen: config.blurLockScreen, hasLockPassword: hasLockPassword(config), language })
   })
 
   app.post('/api/unlock', express.json({ limit: '1kb' }), (request, response) => {
@@ -62,13 +66,13 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
     }
     const password = request.body?.password
     if (typeof password !== 'string') {
-      response.status(400).json({ error: '请输入锁屏密码' })
+      response.status(400).json({ error: t('Enter the lock screen password.') })
       return
     }
     const expected = crypto.createHash('sha256').update(String(config.lockPassword)).digest()
     const received = crypto.createHash('sha256').update(password).digest()
     if (!crypto.timingSafeEqual(expected, received)) {
-      response.status(401).json({ error: '密码错误，请重试' })
+      response.status(401).json({ error: t('Incorrect password. Please try again.') })
       return
     }
     response.json({ unlocked: true })
@@ -85,7 +89,7 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
   }))
 
   app.get('/api/pdf', asyncRoute(async (request, response, next) => {
-    const pdfPath = await resolvePdfPath(absoluteRoot, request.query.path)
+    const pdfPath = await resolvePdfPath(absoluteRoot, request.query.path, language)
     const encodedName = encodeURIComponent(path.basename(pdfPath))
 
     response.setHeader('Content-Type', 'application/pdf')
@@ -99,7 +103,7 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
   }))
 
   app.use('/api', (_request, response) => {
-    response.status(404).json({ error: '接口不存在' })
+    response.status(404).json({ error: t('API endpoint not found.') })
   })
 
   if (staticDir) {
@@ -111,7 +115,7 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
   }
 
   app.use((_request, response) => {
-    response.status(404).json({ error: '页面不存在' })
+    response.status(404).json({ error: t('Page not found.') })
   })
 
   app.use((error, _request, response, next) => {
@@ -121,7 +125,7 @@ export function createPdfApp({ rootDir, staticDir, config = initializeWorkspaceC
     }
 
     const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500
-    const message = statusCode === 500 ? '本地服务发生错误' : error.message
+    const message = statusCode === 500 ? t('An error occurred on the local server.') : error.message
     response.status(statusCode).json({ error: message })
   })
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 
 import PdfViewer from './components/PdfViewer.vue'
 import DocumentTabPicker from './components/DocumentTabPicker.vue'
@@ -46,9 +46,16 @@ import {
 } from './tab-context-menu.js'
 import { isFocusModeShortcut, resolveDocumentTitle } from './focus-mode.js'
 import { createWorkspaceStorageKey } from './workspace-storage.js'
+import { I18N_KEY, useI18n } from './i18n.js'
+import { DEFAULT_LANGUAGE, isSupportedLanguage } from '../shared/localization.js'
+
+const i18n = useI18n()
+provide(I18N_KEY, i18n)
+const { t, language } = i18n
 
 const tree = ref([])
-const rootName = ref('本地 PDF')
+const rootName = ref('')
+const displayRootName = computed(() => rootName.value || t('Local PDFs'))
 const totalCount = ref(0)
 const workspaceId = ref('')
 const openTabs = ref([])
@@ -107,17 +114,19 @@ async function loadLockConfig() {
   try {
     const response = await fetch('/api/config', { cache: 'no-store' })
     const config = await response.json()
-    if (!response.ok) throw new Error('无法读取本地配置，请确认服务已启动后重试')
-    if (typeof config.blurLockScreen !== 'boolean' || typeof config.hasLockPassword !== 'boolean' || !config.workspaceId) {
-      throw new Error('本地配置无效，请重启服务后重试')
+    if (!response.ok) throw new Error(t('Unable to load local settings. Make sure the server is running and try again.'))
+    const configuredLanguage = Object.hasOwn(config, 'language') ? config.language : DEFAULT_LANGUAGE
+    if (typeof config.blurLockScreen !== 'boolean' || typeof config.hasLockPassword !== 'boolean' || !config.workspaceId || !isSupportedLanguage(configuredLanguage)) {
+      throw new Error(t('Local settings are invalid. Restart the server and try again.'))
     }
     if (!blurLock) return
+    language.value = configuredLanguage
     passwordRequired.value = config.hasLockPassword
     blurLock.configure({ enabled: config.blurLockScreen, workspaceId: config.workspaceId })
     configReady.value = true
     if (!treeInitialized.value) await loadTree()
   } catch (error) {
-    configError.value = error.message || '无法连接本地服务，请确认服务已启动后重试'
+    configError.value = error.message || t('Unable to connect to the local server. Make sure it is running and try again.')
   } finally {
     configLoading.value = false
   }
@@ -136,12 +145,12 @@ async function unlockScreen(password) {
         cache: 'no-store',
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(response.status === 401 ? '暂时无法继续，请重试' : '无法连接本地服务，请稍后重试')
+      if (!response.ok) throw new Error(response.status === 401 ? t('Unable to continue. Please try again.') : t('Unable to connect to the local server. Please try again later.'))
       return result.unlocked === true
     })
-    if (!unlocked) unlockError.value = '操作已中断，请重试'
+    if (!unlocked) unlockError.value = t('The operation was interrupted. Please try again.')
   } catch (error) {
-    unlockError.value = error.message || '无法连接本地服务，请稍后重试'
+    unlockError.value = error.message || t('Unable to connect to the local server. Please try again later.')
   } finally {
     unlockPending.value = false
   }
@@ -224,7 +233,7 @@ async function loadTree() {
     const result = await response.json()
     if (generation !== treeRequestGeneration) return
     if (!response.ok) {
-      throw new Error(result.error || '无法读取 PDF 目录')
+      throw new Error(result.error || t('Unable to load the PDF directory.'))
     }
 
     if (!workspaceStateRestored && result.workspaceId) {
@@ -356,7 +365,7 @@ function toggleContextTabFavorite() {
 
 function favoriteParentPath(file) {
   const separatorIndex = file.path.lastIndexOf('/')
-  return separatorIndex > 0 ? file.path.slice(0, separatorIndex) : rootName.value
+  return separatorIndex > 0 ? file.path.slice(0, separatorIndex) : displayRootName.value
 }
 
 async function applyTabState(nextState, restoreFocus = false) {
@@ -789,9 +798,15 @@ function persistTreeExpansionState() {
   )
 }
 
-watch([activeFile, focusMode, screenBlocked], ([file, focused, blocked]) => {
+watch([activeFile, focusMode, screenBlocked, language], ([file, focused, blocked]) => {
   if (typeof document === 'undefined') return
-  document.title = blocked ? '—' : resolveDocumentTitle(file?.name, focused)
+  document.title = blocked ? '—' : resolveDocumentTitle(file?.name, focused, language.value)
+}, { immediate: true })
+watch(language, (value) => {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = value === 'zh' ? 'zh-CN' : 'en'
+  const description = document.querySelector('meta[name="description"]')
+  if (description) description.content = t('Read PDFs from the current directory in your browser.')
 }, { immediate: true })
 watch(screenBlocked, (blocked) => {
   if (!blocked) return
@@ -852,7 +867,7 @@ onBeforeUnmount(() => {
       <button
         class="icon-button mobile-menu-button"
         type="button"
-        aria-label="打开文件目录"
+        :aria-label="t('Open file browser')"
         @click="sidebarOpen = true"
       >
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
@@ -861,12 +876,12 @@ onBeforeUnmount(() => {
       <div class="brand-mark" aria-hidden="true">P</div>
       <div class="brand-copy">
         <span class="brand-name">PDF LOCAL</span>
-        <span class="brand-subtitle">离线文档阅读台</span>
+        <span class="brand-subtitle">{{ t("Offline document reader") }}</span>
       </div>
 
-      <div class="header-directory" :title="rootName">
-        <span class="header-directory-label">当前目录</span>
-        <strong>{{ rootName }}</strong>
+      <div class="header-directory" :title="displayRootName">
+        <span class="header-directory-label">{{ t("Current directory") }}</span>
+        <strong>{{ displayRootName }}</strong>
       </div>
 
       <div class="app-settings">
@@ -875,21 +890,21 @@ onBeforeUnmount(() => {
           type="button"
           :aria-expanded="settingsOpen"
           aria-controls="pdf-reader-settings"
-          title="阅读设置"
-          aria-label="打开阅读设置"
+          :title="t('Reader settings')"
+          :aria-label="t('Open reader settings')"
           @click="toggleSettings"
         >
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 7.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM10 3v1.4M10 15.6V17M17 10h-1.4M4.4 10H3M14.95 5.05l-.98.98M6.03 13.97l-.98.98M14.95 14.95l-.98-.98M6.03 6.03l-.98-.98" /></svg>
         </button>
-        <div v-if="settingsOpen" id="pdf-reader-settings" class="app-settings-panel" role="dialog" aria-label="阅读设置">
+        <div v-if="settingsOpen" id="pdf-reader-settings" class="app-settings-panel" role="dialog" :aria-label="t('Reader settings')">
           <div class="app-settings-heading">
-            <strong>阅读设置</strong>
-            <span>仅保存在本浏览器</span>
+            <strong>{{ t("Reader settings") }}</strong>
+            <span>{{ t("Saved in this browser") }}</span>
           </div>
           <label class="settings-switch-row">
             <span>
-              <strong>专注模式页签快捷切换</strong>
-              <small>专注模式左侧显示按顺序编号的页签按钮</small>
+              <strong>{{ t("Quick tab switching in focus mode") }}</strong>
+              <small>{{ t("Show numbered tab buttons on the left in focus mode.") }}</small>
             </span>
             <input v-model="focusTabSwitchEnabled" type="checkbox" />
             <span class="settings-switch" aria-hidden="true" />
@@ -910,7 +925,7 @@ onBeforeUnmount(() => {
         v-if="sidebarOpen"
         class="sidebar-scrim"
         type="button"
-        aria-label="关闭文件目录"
+        :aria-label="t('Close file browser')"
         @click="sidebarOpen = false"
       />
 
@@ -921,22 +936,22 @@ onBeforeUnmount(() => {
       >
         <div class="sidebar-heading">
           <div>
-            <span class="section-kicker">LIBRARY</span>
-            <h1>文件目录</h1>
+            <span class="section-kicker">{{ t("LIBRARY") }}</span>
+            <h1>{{ t("File browser") }}</h1>
           </div>
           <div class="sidebar-heading-actions">
             <button
               class="icon-button sidebar-collapse-button"
               type="button"
-              title="收起文件目录"
-              aria-label="收起文件目录"
+              :title="t('Collapse file browser')"
+              :aria-label="t('Collapse file browser')"
               :aria-expanded="!sidebarCollapsed"
               aria-controls="pdf-sidebar"
               @click="toggleSidebarCollapsed"
             >
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4-6 6 6 6" /></svg>
             </button>
-            <button class="icon-button" type="button" title="重新扫描" aria-label="重新扫描目录" @click="loadTree">
+            <button class="icon-button" type="button" :title="t('Rescan')" :aria-label="t('Rescan directory')" @click="loadTree">
               <svg :class="{ spinning: loading }" viewBox="0 0 20 20" aria-hidden="true">
                 <path d="M16 7a6.5 6.5 0 1 0 .2 5.5M16 3v4h-4" />
               </svg>
@@ -945,11 +960,11 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="library-meta">
-          <span>{{ totalCount }} 份 PDF</span>
-          <span>递归扫描</span>
+          <span>{{ t(totalCount === 1 ? '{count} PDF' : '{count} PDFs', { count: totalCount }) }}</span>
+          <span>{{ t("Includes subfolders") }}</span>
         </div>
 
-        <div class="sidebar-mode-switcher" role="tablist" aria-label="侧栏导航">
+        <div class="sidebar-mode-switcher" role="tablist" :aria-label="t('Sidebar navigation')">
           <button
             class="sidebar-mode-button"
             :class="{ 'sidebar-mode-button--active': sidebarMode === 'files' }"
@@ -958,7 +973,7 @@ onBeforeUnmount(() => {
             :aria-selected="sidebarMode === 'files'"
             @click="sidebarMode = 'files'"
           >
-            <span>文件</span>
+            <span>{{ t("Files") }}</span>
             <span>{{ totalCount }}</span>
           </button>
           <button
@@ -970,37 +985,37 @@ onBeforeUnmount(() => {
             :disabled="!activeFile"
             @click="sidebarMode = 'outline'"
           >
-            <span>文档目录</span>
+            <span>{{ t("Outline") }}</span>
             <span v-if="activeOutlineCount">{{ activeOutlineCount }}</span>
           </button>
         </div>
 
-        <div class="sidebar-expansion-actions" role="group" aria-label="目录层级操作">
-          <span>{{ sidebarMode === 'files' ? '文件夹层级' : '书签层级' }}</span>
+        <div class="sidebar-expansion-actions" role="group" :aria-label="t('Expand or collapse navigation')">
+          <span>{{ t(sidebarMode === 'files' ? 'Folders' : 'Bookmarks') }}</span>
           <div>
             <button
               type="button"
               :disabled="!canControlExpansion"
-              title="收起所有层级"
-              aria-label="收起所有层级"
+              :title="t('Collapse all')"
+              :aria-label="t('Collapse all')"
               @click="setAllExpanded(false)"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4 6 4-4 4 4M4 11l4-4 4 4M4 14h8" />
               </svg>
-              <span><span class="sidebar-expansion-label-prefix">全部</span>收起</span>
+              <span>{{ t('Collapse') }}<span class="sidebar-expansion-label-prefix">{{ t(' all') }}</span></span>
             </button>
             <button
               type="button"
               :disabled="!canControlExpansion"
-              title="展开所有层级"
-              aria-label="展开所有层级"
+              :title="t('Expand all')"
+              :aria-label="t('Expand all')"
               @click="setAllExpanded(true)"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M4 2h8M4 5l4 4 4-4M4 10l4 4 4-4" />
               </svg>
-              <span><span class="sidebar-expansion-label-prefix">全部</span>展开</span>
+              <span>{{ t('Expand') }}<span class="sidebar-expansion-label-prefix">{{ t(' all') }}</span></span>
             </button>
           </div>
         </div>
@@ -1009,31 +1024,31 @@ onBeforeUnmount(() => {
           <template v-if="sidebarMode === 'files'">
           <div v-if="loading" class="nav-state" aria-live="polite">
             <span class="state-spinner" />
-            <span>正在整理目录…</span>
+            <span>{{ t("Scanning directory…") }}</span>
           </div>
 
           <div v-else-if="errorMessage" class="nav-state nav-state--error">
-            <strong>目录读取失败</strong>
+            <strong>{{ t("Unable to load directory") }}</strong>
             <span>{{ errorMessage }}</span>
-            <button class="text-button" type="button" @click="loadTree">再试一次</button>
+            <button class="text-button" type="button" @click="loadTree">{{ t("Try again") }}</button>
           </div>
 
           <div v-else-if="tree.length === 0" class="nav-state">
             <svg class="empty-folder-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
-            <strong>没有发现 PDF</strong>
-            <span>请把文件放入当前目录或其子目录，然后重新扫描。</span>
+            <strong>{{ t("No PDFs found") }}</strong>
+            <span>{{ t("Add PDFs to this directory or its subfolders, then rescan.") }}</span>
           </div>
 
           <template v-else>
-            <section v-if="favoriteFiles.length" class="favorites-section" aria-label="收藏快捷入口">
+            <section v-if="favoriteFiles.length" class="favorites-section" :aria-label="t('Favorite shortcuts')">
               <div class="favorites-heading">
                 <span>
                   <svg viewBox="0 0 20 20" aria-hidden="true">
                     <path d="m10 2.7 2.2 4.45 4.9.71-3.55 3.46.84 4.88L10 13.9 5.61 16.2l.84-4.88L2.9 7.86l4.9-.71z" />
                   </svg>
-                  收藏
+                  {{ t('Favorites') }}
                 </span>
                 <span>{{ favoriteFiles.length }}</span>
               </div>
@@ -1052,8 +1067,8 @@ onBeforeUnmount(() => {
                   <button
                     class="favorite-remove-button"
                     type="button"
-                    :title="`取消收藏 ${file.name}`"
-                    :aria-label="`取消收藏 ${file.name}`"
+                    :title="t('Remove {name} from favorites', { name: file.name })"
+                    :aria-label="t('Remove {name} from favorites', { name: file.name })"
                     @click="toggleFavorite(file)"
                   >
                     <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -1064,7 +1079,7 @@ onBeforeUnmount(() => {
               </ul>
             </section>
 
-            <ul class="tree-root" aria-label="PDF 文件目录">
+            <ul class="tree-root" :aria-label="t('PDF file browser')">
               <TreeNode
                 v-for="node in tree"
                 :key="node.path"
@@ -1082,26 +1097,26 @@ onBeforeUnmount(() => {
 
           <template v-else>
             <div v-if="!activeFile" class="nav-state">
-              <strong>没有打开的 PDF</strong>
-              <span>先从文件目录打开一份 PDF。</span>
+              <strong>{{ t("No PDF open") }}</strong>
+              <span>{{ t("Open a PDF from the file browser first.") }}</span>
             </div>
             <div v-else-if="activeOutlineState.status === 'loading' || activeOutlineState.status === 'idle'" class="nav-state" aria-live="polite">
               <span class="state-spinner" />
-              <strong>正在读取文档目录</strong>
-              <span>正在解析 PDF 内置书签…</span>
+              <strong>{{ t("Loading outline") }}</strong>
+              <span>{{ t('Reading embedded PDF bookmarks…') }}</span>
             </div>
             <div v-else-if="activeOutlineState.status === 'error'" class="nav-state nav-state--error">
-              <strong>文档目录读取失败</strong>
-              <span>这份 PDF 的书签结构无法解析。</span>
+              <strong>{{ t("Unable to load outline") }}</strong>
+              <span>{{ t("The bookmarks in this PDF could not be read.") }}</span>
             </div>
             <div v-else-if="activeOutlineState.items.length === 0" class="nav-state">
               <svg class="empty-folder-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M4 5.5h16v13H4zM7 9h10M7 12h7M7 15h5" />
               </svg>
-              <strong>没有文档目录</strong>
-              <span>这份 PDF 没有内置书签或章节导航。</span>
+              <strong>{{ t("No outline available") }}</strong>
+              <span>{{ t("This PDF has no embedded bookmarks or chapter navigation.") }}</span>
             </div>
-            <ul v-else class="outline-root" aria-label="PDF 文档目录">
+            <ul v-else class="outline-root" :aria-label="t('PDF document outline')">
               <OutlineNode
                 v-for="item in activeOutlineState.items"
                 :key="item.id"
@@ -1115,7 +1130,7 @@ onBeforeUnmount(() => {
 
         <div class="sidebar-footer">
           <span class="status-dot" />
-          <span>服务运行中</span>
+          <span>{{ t("Server running") }}</span>
         </div>
       </aside>
 
@@ -1125,7 +1140,7 @@ onBeforeUnmount(() => {
         :class="{ 'sidebar-resizer--active': resizingSidebar }"
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整侧栏宽度"
+        :aria-label="t('Resize sidebar')"
         :aria-valuemin="SIDEBAR_MIN_WIDTH"
         :aria-valuenow="sidebarWidth"
         :aria-valuemax="sidebarMaxWidth"
@@ -1139,17 +1154,17 @@ onBeforeUnmount(() => {
           v-if="sidebarCollapsed"
           class="icon-button sidebar-expand-button"
           type="button"
-          title="展开文件目录"
-          aria-label="展开文件目录"
+          :title="t('Expand file browser')"
+          :aria-label="t('Expand file browser')"
           :aria-expanded="!sidebarCollapsed"
           aria-controls="pdf-sidebar"
           @click="toggleSidebarCollapsed"
         >
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 4 6 6-6 6" /></svg>
         </button>
-        <section v-if="openTabs.length" class="reader-workspace" aria-label="已打开的 PDF 文档">
-          <nav class="document-tabs" aria-label="文档页签">
-            <div class="document-tab-list" role="tablist" aria-label="已打开的 PDF">
+        <section v-if="openTabs.length" class="reader-workspace" :aria-label="t('Open PDF documents')">
+          <nav class="document-tabs" :aria-label="t('Document tabs')">
+            <div class="document-tab-list" role="tablist" :aria-label="t('Open PDFs')">
               <div
                 v-for="(tab, index) in openTabs"
                 :key="tab.path"
@@ -1177,8 +1192,8 @@ onBeforeUnmount(() => {
                 <button
                   class="document-tab-close"
                   type="button"
-                  :aria-label="`关闭 ${tab.name}`"
-                  :title="`关闭 ${tab.name}`"
+                  :aria-label="t('Close {name}', { name: tab.name })"
+                  :title="t('Close {name}', { name: tab.name })"
                   @click="closeTab(tab.path, true)"
                 >
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 4.5 7 7m0-7-7 7" /></svg>
@@ -1201,27 +1216,27 @@ onBeforeUnmount(() => {
               ref="tabContextMenuElement"
               class="tab-context-menu"
               role="menu"
-              aria-label="页签操作"
+              :aria-label="t('Tab actions')"
               :style="{ left: `${tabContextMenu.x}px`, top: `${tabContextMenu.y}px` }"
               @contextmenu.prevent
               @keydown="handleContextMenuKeydown"
             >
               <button role="menuitem" type="button" @click="toggleContextTabFavorite">
-                {{ isFavorite(tabContextMenu.path) ? '取消收藏' : '收藏到快捷入口' }}
+                {{ t(isFavorite(tabContextMenu.path) ? 'Remove from favorites' : 'Add to favorites') }}
               </button>
               <span class="tab-context-menu-separator" role="separator" />
               <button role="menuitem" type="button" :disabled="!canCloseTabs('left')" @click="closeTabsFromContext('left')">
-                关闭左侧页签
+                {{ t('Close tabs to the left') }}
               </button>
               <button role="menuitem" type="button" :disabled="!canCloseTabs('right')" @click="closeTabsFromContext('right')">
-                关闭右侧页签
+                {{ t('Close tabs to the right') }}
               </button>
               <button role="menuitem" type="button" :disabled="!canCloseTabs('others')" @click="closeTabsFromContext('others')">
-                关闭其他页签
+                {{ t('Close other tabs') }}
               </button>
               <span class="tab-context-menu-separator" role="separator" />
               <button role="menuitem" type="button" @click="closeTabsFromContext('all')">
-                关闭全部页签
+                {{ t('Close all tabs') }}
               </button>
             </div>
           </Teleport>
@@ -1247,7 +1262,7 @@ onBeforeUnmount(() => {
                 :tab-items="openTabs"
                 :active-tab-path="activeTabPath"
                 :focus-mode="focusMode"
-                :suppress-resize-render="resizingSidebar || focusMode"
+                :suppress-resize-render="resizingSidebar"
                 :initial-scroll-top="tabScrollPositions.get(tab.path) || 0"
                 :initial-scroll-anchor="tabScrollAnchors.get(tab.path) || null"
                 @toggle-reading-mode="toggleReadingMode"
@@ -1262,9 +1277,9 @@ onBeforeUnmount(() => {
 
         <div v-else ref="emptyReaderElement" class="reader-empty" tabindex="-1">
           <div class="empty-monogram" aria-hidden="true">PDF</div>
-          <span class="section-kicker">LOCAL READER</span>
-          <h2>等待一份文档</h2>
-          <p>从左侧选择 PDF，即可在这里开始阅读。</p>
+          <span class="section-kicker">{{ t("LOCAL READER") }}</span>
+          <h2>{{ t("Ready for a document") }}</h2>
+          <p>{{ t("Select a PDF from the sidebar to start reading.") }}</p>
         </div>
       </main>
     </div>

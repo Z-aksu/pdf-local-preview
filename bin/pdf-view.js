@@ -13,6 +13,7 @@ import { createPdfApp } from '../server/app.js'
 import { hasLockPassword, initializeWorkspaceConfig } from '../server/config.js'
 import { listenOnAvailablePort } from '../server/listen.js'
 import { parseCliOptions } from '../server/options.js'
+import { LANGUAGE_HELP } from '../shared/localization.js'
 
 const require = createRequire(import.meta.url)
 const packageInfo = require('../package.json')
@@ -123,6 +124,7 @@ export async function main(args = process.argv.slice(2)) {
   console.log('PDF Local Preview 已启动')
   console.log(`目录：${rootDir}`)
   console.log(`配置：${path.join(rootDir, '.pdf', 'config.json')}`)
+  console.log(`Language / 语言：${config.language} | Supported languages / 可选语言：${LANGUAGE_HELP}`)
   if (hasLockPassword(config)) console.log(`解锁密码：${config.lockPassword}`)
   console.log(`地址：${url}`)
   if (options.host === '0.0.0.0' || options.host === '::') {

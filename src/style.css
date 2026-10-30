@@ -2015,11 +2015,11 @@ input:focus-visible {
     min-width: 24px;
   }
 
-  .toolbar-group[aria-label="翻页工具"] {
+  .toolbar-group--pages {
     gap: 0;
   }
 
-  .toolbar-group[aria-label="翻页工具"] .toolbar-button {
+  .toolbar-group--pages .toolbar-button {
     width: 26px;
     min-width: 26px;
     padding-right: 0;

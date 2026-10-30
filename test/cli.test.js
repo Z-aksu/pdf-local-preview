@@ -84,6 +84,9 @@ test('CLI uses the command working directory when --dir is omitted', async (t) =
   const config = JSON.parse(await readFile(path.join(fixture.root, '.pdf', 'config.json'), 'utf8'))
   assert.equal(config.blurLockScreen, false)
   assert.equal(config.lockPassword, '')
+  assert.equal(config.language, 'en')
+  assert.match(cli.output, /Language \/ 语言：en/)
+  assert.match(cli.output, /Supported languages.*en.*zh/)
   assert.doesNotMatch(cli.output, /解锁密码：/)
   const result = await fetch(`${url}/api/tree`).then((response) => response.json())
 
@@ -127,7 +130,7 @@ test('CLI resolves relative -d and --dir= paths against the command working dire
 test('CLI preserves an existing config and password across repeated starts', async (t) => {
   const fixture = await createFixture(t)
   const configPath = path.join(fixture.directory, '.pdf', 'config.json')
-  const contents = '{ "blurLockScreen": false, "lockPassword": "0088", "custom": true }\n'
+  const contents = '{ "blurLockScreen": false, "lockPassword": "0088", "language": "en", "custom": true }\n'
   await mkdir(path.dirname(configPath))
   await writeFile(configPath, contents)
 
@@ -152,6 +155,33 @@ test('CLI reports malformed config without overwriting it or starting the server
   assert.ok(result.stderr.includes(configPath), result.stderr)
   assert.doesNotMatch(result.stdout, /已启动|地址：/)
   assert.equal(await readFile(configPath, 'utf8'), '{broken')
+})
+
+test('CLI prints the selected Chinese language and supported language choices', async (t) => {
+  const fixture = await createFixture(t)
+  const configPath = path.join(fixture.directory, '.pdf', 'config.json')
+  await mkdir(path.dirname(configPath))
+  await writeFile(configPath, JSON.stringify({ language: 'zh' }))
+  const cli = fixture.launch(['--dir', fixture.directory, '--port', '0'])
+  const url = await cli.waitForUrl()
+  assert.match(cli.output, /Language \/ 语言：zh/)
+  assert.match(cli.output, /Supported languages.*en.*zh/)
+  assert.equal((await fetch(`${url}/api/config`).then((response) => response.json())).language, 'zh')
+})
+
+test('CLI stops on unsupported language and prints the allowed values without changing config', async (t) => {
+  const fixture = await createFixture(t)
+  const configPath = path.join(fixture.root, '.pdf', 'config.json')
+  await mkdir(path.dirname(configPath))
+  const contents = '{"language":"fr","custom":"keep"}'
+  await writeFile(configPath, contents)
+  const result = await fixture.launch(['--port', '0']).completion
+  assert.equal(result.code, 1)
+  assert.ok(result.stderr.includes(configPath))
+  assert.match(result.stderr, /Unsupported language "fr"/)
+  assert.match(result.stderr, /Supported languages: en \(English\), zh \(中文\)/)
+  assert.doesNotMatch(result.stdout, /已启动|地址：/)
+  assert.equal(await readFile(configPath, 'utf8'), contents)
 })
 
 test('CLI binds an explicitly selected available port', async (t) => {

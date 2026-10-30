@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from '../i18n.js'
 import { computed } from 'vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   node: {
@@ -104,8 +107,8 @@ function selectNode() {
         class="tree-favorite-button"
         :class="{ 'tree-favorite-button--active': isFavorite }"
         type="button"
-        :title="isFavorite ? `取消收藏 ${node.name}` : `收藏 ${node.name}`"
-        :aria-label="isFavorite ? `取消收藏 ${node.name}` : `收藏 ${node.name}`"
+        :title="t(isFavorite ? 'Remove {name} from favorites' : 'Add {name} to favorites', { name: node.name })"
+        :aria-label="t(isFavorite ? 'Remove {name} from favorites' : 'Add {name} to favorites', { name: node.name })"
         :aria-pressed="isFavorite"
         @click="emit('toggle-favorite', node)"
       >

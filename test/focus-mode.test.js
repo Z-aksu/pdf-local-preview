@@ -17,7 +17,12 @@ test('focus mode shortcut rejects incomplete or conflicting key combinations', (
 })
 
 test('focus mode hides the active file name in the browser title', () => {
-  assert.equal(resolveDocumentTitle('英语真题.pdf', true), '离线文档阅读台')
+  assert.equal(resolveDocumentTitle('英语真题.pdf', true), 'Offline document reader')
   assert.equal(resolveDocumentTitle('英语真题.pdf', false), '英语真题.pdf · PDF Local Preview')
   assert.equal(resolveDocumentTitle('', false), 'PDF Local Preview')
+})
+
+test('focus title follows the configured language while preserving document names', () => {
+  assert.equal(resolveDocumentTitle('文档.pdf', true, 'zh'), '离线文档阅读台')
+  assert.equal(resolveDocumentTitle('文档.pdf', false, 'zh'), '文档.pdf · PDF Local Preview')
 })
