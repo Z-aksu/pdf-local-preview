@@ -50,6 +50,8 @@ test('listenOnAvailablePort increments until it finds a free port', async (conte
 })
 
 test('listenOnAvailablePort retries consecutive occupied ports in order', async () => {
+  const requestedPort = 41221
+  const availablePort = requestedPort + 2
   const attemptedPorts = []
   const retries = []
   const app = {
@@ -58,7 +60,7 @@ test('listenOnAvailablePort retries consecutive occupied ports in order', async 
       const server = new EventEmitter()
       server.address = () => ({ port })
       queueMicrotask(() => {
-        if (port < 3212) {
+        if (port < availablePort) {
           server.emit('error', Object.assign(new Error('address in use'), { code: 'EADDRINUSE' }))
         } else {
           server.emit('listening')
@@ -70,13 +72,13 @@ test('listenOnAvailablePort retries consecutive occupied ports in order', async 
 
   const result = await listenOnAvailablePort(app, {
     host: '127.0.0.1',
-    port: 41221,
+    port: requestedPort,
     onPortInUse: (occupiedPort, nextPort) => retries.push([occupiedPort, nextPort]),
   })
 
-  assert.equal(result.port, 3212)
-  assert.deepEqual(attemptedPorts, [41221, 3211, 3212])
-  assert.deepEqual(retries, [[41221, 3211], [3211, 3212]])
+  assert.equal(result.port, availablePort)
+  assert.deepEqual(attemptedPorts, [requestedPort, requestedPort + 1, availablePort])
+  assert.deepEqual(retries, [[requestedPort, requestedPort + 1], [requestedPort + 1, availablePort]])
 })
 
 test('listenOnAvailablePort rejects an occupied explicit port without retrying', async (context) => {

@@ -81,12 +81,12 @@ pdf-view --port 4300 --no-open
 
 ```json
 {
-  "blurLockScreen": true,
+  "blurLockScreen": false,
   "lockPassword": ""
 }
 ```
 
-`blurLockScreen` 默认是 `true`，改为 `false` 可关闭失焦锁屏。`lockPassword` 初始化为空字符串，不会自动生成密码；留空时点击页面上的时间数字即可恢复阅读。只包含空格的密码也按未设置处理。
+`blurLockScreen` 默认是 `false`，失焦锁屏默认关闭，需要时手动改为 `true`。`lockPassword` 初始化为空字符串，不会自动生成密码；启用锁屏且密码留空时，点击页面上的时间数字即可恢复阅读。只包含空格的密码也按未设置处理。
 
 需要密码保护时，在配置中手动填写，例如 `"lockPassword": "0042"`。已有密码会保留，包含前导零的密码需用字符串保存。设置密码后，启动日志会打印 `解锁密码：0042`；未设置时不打印密码行。修改配置后重启服务并刷新页面生效。
 

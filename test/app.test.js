@@ -112,7 +112,7 @@ test('configuration is initialized before requests and only public settings reac
 
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('cache-control'), 'no-store')
-  assert.equal(result.blurLockScreen, true)
+  assert.equal(result.blurLockScreen, false)
   assert.equal(result.hasLockPassword, false)
   assert.match(result.workspaceId, /^[a-f0-9]{24}$/)
   assert.deepEqual(Object.keys(result).sort(), ['blurLockScreen', 'hasLockPassword', 'workspaceId'])
@@ -160,7 +160,7 @@ test('respects disabled locking and numeric custom passwords', async (t) => {
 })
 
 test('empty passwords allow resuming without a password while blur protection remains enabled', async (t) => {
-  const { baseUrl } = await startFixtureServer(t)
+  const { baseUrl } = await startFixtureServer(t, { blurLockScreen: true, lockPassword: '' })
   const config = await fetch(`${baseUrl}/api/config`).then((response) => response.json())
   assert.equal(config.blurLockScreen, true)
   assert.equal(config.hasLockPassword, false)

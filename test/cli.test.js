@@ -82,7 +82,7 @@ test('CLI uses the command working directory when --dir is omitted', async (t) =
   const cli = fixture.launch(['--port', '0'])
   const url = await cli.waitForUrl()
   const config = JSON.parse(await readFile(path.join(fixture.root, '.pdf', 'config.json'), 'utf8'))
-  assert.equal(config.blurLockScreen, true)
+  assert.equal(config.blurLockScreen, false)
   assert.equal(config.lockPassword, '')
   assert.doesNotMatch(cli.output, /解锁密码：/)
   const result = await fetch(`${url}/api/tree`).then((response) => response.json())

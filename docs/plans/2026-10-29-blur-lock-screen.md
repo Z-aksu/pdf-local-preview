@@ -4,7 +4,7 @@
 
 **Goal:** 在 PDF 根目录初始化 `.pdf/config.json`，开启 `blurLockScreen` 时失焦立即遮住阅读内容，并使用保留在本地配置中的密码解锁。
 
-**Architecture:** Express 创建时初始化配置，默认 `blurLockScreen: true`、`lockPassword: ""`。已有字段和未知配置保持不变，配置完整时不重新写文件；格式错误时停止启动并指出文件路径。浏览器只取得开关、是否设置密码和工作区标识，密码通过服务端 POST 校验。Vue 使用独立焦点状态控制器及原生模态对话框，隐藏并禁止操作底层界面，保留阅读组件和位置。
+**Architecture:** Express 创建时初始化配置，默认 `blurLockScreen: false`、`lockPassword: ""`。已有字段和未知配置保持不变，配置完整时不重新写文件；格式错误时停止启动并指出文件路径。浏览器只取得开关、是否设置密码和工作区标识，密码通过服务端 POST 校验。Vue 使用独立焦点状态控制器及原生模态对话框，隐藏并禁止操作底层界面，保留阅读组件和位置。
 
 **Tech Stack:** Node.js fs/crypto、Express、Vue 3、HTML dialog、node:test。
 
